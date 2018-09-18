@@ -24,6 +24,8 @@ class Conductor(object):
         self.closed = closed
         self.potential = potential
         self.name = name
+        
+        self._sigmas = None
     
     @property
     def lengths(self):
@@ -105,6 +107,8 @@ class Dielectric(object):
         
         self._chi = float(epsilon_rel) - 1
         self._name = str(name)
+        
+        self._Ps = None
     
     @property
     def centers(self):
@@ -115,12 +119,20 @@ class Dielectric(object):
         return np.prod(self._L, axis=0)
     
     @property
+    def bottom_left(self):
+        return self._c
+    
+    @property
+    def sides(self):
+        return self._L
+    
+    @property
+    def polarizability(self):
+        return self._chi
+    
+    @property
     def Ps(self):
         return self._Ps
-    
-    @Ps.setter
-    def Ps(self, Ps):
-        self._Ps = Ps
     
     @property
     def polarization_per_unit_length(self):
@@ -177,6 +189,7 @@ class ConductorSet(object):
                 raise ValueError('unrecognized object')
         self._conductors = tuple(self._conductors)
         self._dielectrics = tuple(self._dielectrics)
+        assert len(self._conductors) > 0
     
     @property
     def conductors(self):
@@ -194,60 +207,205 @@ class ConductorSet(object):
             rt += dielectric.draw(*args, **kw)
         return rt
     
-    def solve(self, zero_potential_at_infinity=True):
-        shapes = np.array([len(conductor.lengths) for conductor in self.conductors])
-        potentials = np.array([conductor.potential for conductor in self.conductors])
-        B = np.empty(np.sum(shapes))
-        idxs = np.cumsum(np.concatenate([[0], shapes]))
-        for i in range(len(potentials)):
-            B[idxs[i]:idxs[i+1]] = potentials[i]
+    def solve(self, zero_potential_at_infinity=True, use_dielectrics=True):
+        epsilon_0 = constants.epsilon_0
         
-        slopes = np.concatenate([conductor.slopes for conductor in self.conductors], axis=1)
-        centers = np.concatenate([conductor.centers for conductor in self.conductors], axis=1)
-        lengths = np.concatenate([conductor.lengths for conductor in self.conductors])
+        # extract conductor properties
+        cond_shapes = np.array([len(conductor.lengths) for conductor in self.conductors])
+        cond_potentials = np.concatenate([
+            np.ones(shape) * conductor.potential
+            for shape, conductor in zip(cond_shapes, self.conductors)
+        ])
+        cond_slopes = np.concatenate([conductor.slopes for conductor in self.conductors], axis=1)
+        cond_centers = np.concatenate([conductor.centers for conductor in self.conductors], axis=1)
+        cond_lengths = np.concatenate([conductor.lengths for conductor in self.conductors])
+        N_cond = len(cond_potentials)
         
-        assert len(slopes[0]) == len(centers[0]) == len(lengths) == len(B)
+        assert len(cond_slopes[0]) == len(cond_centers[0]) == len(cond_lengths) == len(cond_potentials)
+
+        # extract dielectric properties
+        if len(self.dielectrics) == 0:
+            use_dielectrics = False
+            N_diel = 0
+        if use_dielectrics:
+            diel_shapes = np.array([len(dielectric.areas) for dielectric in self.dielectrics])
+            diel_chis = np.concatenate([
+                np.ones(shape) * dielectric.polarizability
+                for shape, dielectric in zip(diel_shapes, self.dielectrics)
+            ])
+            diel_areas = np.concatenate([dielectric.areas for dielectric in self.dielectrics])
+            diel_centers = np.concatenate([dielectric.centers for dielectric in self.dielectrics])
+            diel_bottom_left = np.concatenate([dielectric.bottom_left for dielectric in self.dielectrics], axis=1)
+            diel_sides = np.concatenate([dielectric.sides for dielectric in self.dielectrics], axis=1)
+            N_diel = len(diel_chis)
+            
+            assert len(diel_chis) == len(diel_areas) == len(diel_centers) == len(diel_bottom_left[0]) == len(diel_sides[0])
         
-        # first dimension is fixed surface, second dimension is source
-        a = np.sum(slopes ** 2, axis=0).reshape(1, -1)
-        b = 2 * np.sum(slopes.reshape(2, 1, -1) * (centers.reshape(2, 1, -1) - centers.reshape(2, -1, 1)), axis=0)
-        c = np.sum((centers.reshape(2, 1, -1) - centers.reshape(2, -1, 1)) ** 2, axis=0)
+        # linear system to solve is Ax=B
+        # layout of the equations:
+        # *––––––––––––*––––––––––––*   *–––––––––––*
+        # | cond<-cond | cond<-diel |   | potential |
+        # |––––––––––––|––––––––––––|   |–––––––––––|
+        # | diel<-cond | diel<-diel | = |     0     |
+        # |––––––––––––|––––––––––––|   |–––––––––––|
+        # | sum charge |            |   |     0     |
+        # *––––––––––––*––––––––––––*   *–––––––––––*
+        # 
+        # arrangement of unknowns:
+        # [*sigma, *P_x, *P_y, logr0]
         
-        assert a.shape == (1, len(B))
-        assert b.shape == c.shape == (len(B), len(B))
+        # construct B
+        B_potential = cond_potentials
+        B_polarization = np.zeros(2 * N_diel if use_dielectrics else 0)
+        B_boundary_conditions = np.zeros(1 if zero_potential_at_infinity else 0)
+        B = np.concatenate([
+            B_potential,
+            B_polarization,
+            B_boundary_conditions
+        ])
         
-        l = 1/2 * np.array([-lengths, lengths]).reshape(2, 1, -1)
+        # construct A_cc
+        
+        # careful: l, a used also in A_dc
+        a = np.sum(cond_slopes ** 2, axis=0).reshape(1, -1)
+        b = 2 * np.sum(cond_slopes.reshape(2, 1, -1) * (cond_centers.reshape(2, 1, -1) - cond_centers.reshape(2, -1, 1)), axis=0)
+        c = np.sum((cond_centers.reshape(2, 1, -1) - cond_centers.reshape(2, -1, 1)) ** 2, axis=0)
+        
+        assert b.shape == c.shape == 2 * (N_cond,)
+        assert a.shape == (1, N_cond)
+        
+        l = 1/2 * np.array([-cond_lengths, cond_lengths]).reshape(2, 1, -1)
         a = a.reshape(1, *a.shape)
         b = b.reshape(1, *b.shape)
         c = c.reshape(1, *c.shape)
         
-        A = -1/2 * (1/a * np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2)) - 2*l + (b/(2*a) + l) * np.log(a*l**2 + b*l + c))
+        A_cc = -1/2 * (1/a * np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2)) - 2*l + (b/(2*a) + l) * np.log(a*l**2 + b*l + c))
         
-        assert A.shape == (2, len(B), len(B))
+        assert A_cc.shape == (2, N_cond, N_cond)
         
-        A = A[1] - A[0]
+        A_cc = (A_cc[1] - A_cc[0]) / (2 * np.pi * epsilon_0)
+        
+        if use_dielectrics:
+            # construct A_dc
+        
+            b = 2 * np.sum(cond_slopes.reshape(2, 1, -1) * (cond_centers.reshape(2, 1, -1) - diel_centers.reshape(2, -1, 1)), axis=0)
+            c = np.sum((cond_centers.reshape(2, 1, -1) - diel_centers.reshape(2, -1, 1)) ** 2, axis=0)
+            d = -cond_slopes.reshape(2, 1, -1)
+            e = diel_centers.reshape(2, -1, 1) - cond_centers.reshape(2, 1, -1)
+        
+            assert b.shape == c.shape == (N_diel, N_cond)
+            assert d.shape == (2, 1, N_cond)
+            assert e.shape == (2, N_diel, N_cond)
+        
+            l = l.reshape(2, 1, 1, -1)
+            a = a.reshape(1, *a.shape)
+            b = b.reshape(1, 1, *b.shape)
+            c = c.reshape(1, 1, *c.shape)
+            d = d.reshape(1, *d.shape)
+            e = e.reshape(1, *e.shape)
+        
+            A_dc = d/(2*a) * np.log(a*l**2 + b*l + c) + (2*e - b*d/a) / np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2))
+        
+            assert A_dc.shape == (2, 2, N_diel, N_cond)
+        
+            A_dc = (A_dc[1] - A_dc[0]) * diel_chis.reshape(1, -1, 1) / (2 * np.pi)
+            A_dc = A_dc.reshape(2 * N_diel, N_cond)
+        
+            # construct A_cd
+        
+            uv = np.array([
+                diel_bottom_left.reshape(2, -1, 1) - cond_centers.reshape(2, 1, -1),
+                diel_bottom_left.reshape(2, -1, 1) - cond_centers.reshape(2, 1, -1) + diel_sides.reshape(2, -1, 1)
+            ])
+            u = uv[:,0]
+            v = uv[:,1]
+        
+            f = lambda u, v: -1/2 * (v * np.log(u**2 + v**2) + 2*u * np.arctan(v/u) - 2*v)
+            delta = lambda f, u, v: f(u[1], v[1]) - f(u[1], v[0]) - f(u[0], v[1]) + f(u[0], v[0])
+            A_cd_x = delta(f, u, v)
+            A_cd_y = delta(f, v, u)
+        
+            A_cd = np.array([A_cd_x, A_cd_y])
+            A_cd /= 2 * np.pi * epsilon_0
+            A_cd = A_cd.reshape(2 * N_diel, N_cond).transpose()
+            # We did the transposition at the end because, if done before, flattening x and y would have been more complicated.
+        
+            # construct A_dd
+        
+            uv = np.array([
+                diel_bottom_left.reshape(2, -1, 1) - diel_centers.reshape(2, 1, -1),
+                diel_bottom_left.reshape(2, -1, 1) - diel_centers.reshape(2, 1, -1) + diel_sides.reshape(2, -1, 1)
+            ])
+            u = uv[:,0]
+            v = uv[:,1]
+        
+            f = lambda u, v: -np.arctan(v / u)
+            g = lambda u, v: -1/2 * np.log(u**2 + v**2)
+            A_dd_Px_x = delta(f, u, v) * diel_chis.reshape(1, -1)
+            A_dd_Py_x = delta(g, u, v) * diel_chis.reshape(1, -1)
+            A_dd_Px_y = A_dd_Py_x # because symmetric in u, v
+            A_dd_Py_y = delta(f, v, u) * diel_chis.reshape(1, -1)
+        
+            A_dd_Px = np.concatenate([A_dd_Px_x, A_dd_Px_y], axis=1)
+            A_dd_Py = np.concatenate([A_dd_Py_x, A_dd_Py_y], axis=1)
+            A_dd = np.concatenate([A_dd_Px, A_dd_Py], axis=0).transpose()
+            A_dd /= 2 * np.pi
+            np.fill_diagonal(A_dd, np.diagonal(A_dd) - 1)
+        
+            assert A_dd.shape == (2 * N_diel, 2 * N_diel)
+        else:
+            A_cd = np.zeros((N_cond, 0))
+            A_dc = np.zeros((0, N_cond))
+            A_dd = np.zeros((0, 0))
         
         if zero_potential_at_infinity:
-            A = np.concatenate([A, np.ones((len(B), 1)) * np.sum(lengths)], axis=1)
-            A = np.concatenate([A, np.concatenate([lengths, [0]]).reshape(1, -1)], axis=0)
-            B = np.concatenate([B, [0]])
+            # construct A_offset
+            A_offset = np.ones((N_cond, 1)) * np.sum(cond_lengths) / (2 * np.pi * epsilon_0)
+        
+            # construct A_charge
+            A_charge = cond_lengths.reshape(1, -1)
+            
+            # various zeroes of A
+            A_offset_diel = np.zeros((2 * N_diel, 1))
+            A_charge_diel = np.zeros((1, 2 * N_diel))
+            A_charge_offset = np.zeros((1, 1))
+        else:
+            A_offset = np.zeros((N_cond, 0))
+            A_charge = np.zeros((0, N_cond))
+            A_offset_diel = np.zeros((2 * N_diel, 0))
+            A_charge_diel = np.zeros((0, 2 * N_diel))
+            A_charge_offset = np.zeros((0, 0))
+        
+        A_cc_cd_offset = np.concatenate([A_cc, A_cd, A_offset], axis=1)
+        A_dc_dd = np.concatenate([A_dc, A_dd, A_offset_diel], axis=1)
+        A_charge = np.concatenate([A_charge, A_charge_diel, A_charge_offset], axis=1)
+        A = np.concatenate([A_cc_cd_offset, A_dc_dd, A_charge], axis=0)
         
         assert A.shape == (len(B), len(B))
-        
-        A /= 2 * np.pi * constants.epsilon_0
-        
+                
         solution = linalg.solve(A, B)
         
+        sigmas = solution[:N_cond]
+        if use_dielectrics:
+            Ps = np.array([
+                solution[N_cond:N_cond + N_diel],
+                solution[N_cond + N_diel:N_cond + 2 * N_diel]
+            ])
         if zero_potential_at_infinity:
             logr0 = solution[-1]
-            sigmas = solution[:-1]
         else:
             logr0 = 0
-            sigmas = solution
         
+        idxs = np.cumsum(np.concatenate([[0], cond_shapes]))
         for i in range(len(self.conductors)):
             self.conductors[i]._sigmas = sigmas[idxs[i]:idxs[i+1]]
-        self._potential_offset = -np.sum(lengths) * logr0 / (2 * np.pi * constants.epsilon_0)
+       
+        if use_dielectrics:
+            idxs = np.cumsum(np.concatenate([[0], diel_shapes]))
+            for i in range(len(self.dielectrics)):
+                self.dielectrics[i]._Ps = Ps[idxs[i]:idxs[i+1]]
+        
+        self._potential_offset = -np.sum(cond_lengths) * logr0 / (2 * np.pi * epsilon_0)
     
     @property
     def potential_offset(self):
