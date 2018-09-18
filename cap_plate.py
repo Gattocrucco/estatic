@@ -9,18 +9,19 @@ fig_single.set_tight_layout(True)
 
 ax_geometry, ax_charge = fig_single.subplots(2, 1, sharex=True)
 
+epsilon = 2
+
 # steps = 100
 steps = np.concatenate([[0], np.sort(np.random.rand(98)), [1]])
 s = estatic2d.ConductorSet(
     estatic2d.SegmentConductor((0,0), (10,0), steps, name='bottom', potential=-1),
     estatic2d.SegmentConductor((0,1), (10,1), steps, name='top', potential=1),
-    estatic2d.RectangleDielectric(bottom_left=(0,0), sides=(10,1), segments=(10,10), epsilon_rel=2)
+    estatic2d.RectangleDielectric(bottom_left=(0,0), sides=(10,1), segments=(10,10), epsilon_rel=epsilon)
 )
 
 lines = s.draw(ax=ax_geometry)
 ax_geometry.set_title('geometry')
 ax_geometry.grid(linestyle=':')
-ax_geometry.legend(loc='best', fontsize='small')
 ax_geometry.set_ylabel('y [m]')
 
 s.solve()
@@ -30,6 +31,7 @@ y = np.linspace(-0.5, 1.5, 50)
 usage = dict(use_conductors=True, use_dielectrics=True)
 rt = s.draw_potential(x, y, ax=ax_geometry, **usage)
 s.draw_field(x, y, ax=ax_geometry, **usage)
+ax_geometry.legend(loc='best', fontsize='small')
 
 fig_single.colorbar(rt, ax=ax_geometry)
 
@@ -51,7 +53,6 @@ ax.set_ylabel('capacitance per unit length [F/m]')
 
 distances = np.logspace(-2, 0, 20)
 width = 1
-epsilon = 10
 
 cap_theo = constants.epsilon_0 * epsilon * width / distances
 cap = []

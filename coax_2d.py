@@ -95,7 +95,7 @@ for i in range(centers_x.shape[1]):
     label = 'y = %.3g' % centers_y[0,i]
     ax_align_x.plot(centers_x[:,i], capacitances[:,i], '.-', color=[color] * 3, label=label, zorder=100-i)
 ax_align_x.legend(loc='best', fontsize='small')
-ax_align_x.set_xlabel('x [m]')
+ax_align_x.set_xlabel('wire offset x [m]')
 ax_align_x.set_ylabel('cap. per unit length [F/m]')
 ax_align_x.grid(linestyle=':')
 
@@ -104,7 +104,7 @@ for i in range(centers_x.shape[0]):
     label = 'x = %.3g' % centers_x[i,0]
     ax_align_y.plot(centers_y[i,:], capacitances[i,:], '.-', color=[color] * 3, label=label, zorder=100-i)
 ax_align_y.legend(loc='best', fontsize='small')
-ax_align_y.set_xlabel('y [m]')
+ax_align_y.set_xlabel('wire offset y [m]')
 ax_align_y.grid(linestyle=':')
 
 fig_geometry.show()

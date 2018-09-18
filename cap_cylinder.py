@@ -3,23 +3,24 @@ from matplotlib import pyplot as plt
 from scipy import constants
 import numpy as np
 
-fig_single = plt.figure('cap2d_cylinder_single')
+fig_single = plt.figure('cap_cylinder_single')
 fig_single.clf()
 fig_single.set_tight_layout(True)
 
 ax_geometry, ax_charge = fig_single.subplots(2, 1)
 
+epsilon = 2
+
 angles = 2 * np.pi * np.random.rand(200)
 s = estatic2d.ConductorSet(
     estatic2d.CircleConductor((0,0), 1, np.sort(angles[:100]), name='inner', potential=1),
     estatic2d.CircleConductor((0,0), 2, np.sort(angles[100:]), name='outer', potential=0),
-    estatic2d.RectangleDielectric((-2,-2), (4,4), (20,20), epsilon_rel=2)
+    estatic2d.RectangleDielectric((-2,-2), (4,4), (20,20), epsilon_rel=epsilon)
 )
 
 lines = s.draw(ax=ax_geometry)
 ax_geometry.set_title('geometry')
 ax_geometry.grid(linestyle=':')
-ax_geometry.legend(loc='upper right', fontsize='small')
 ax_geometry.set_ylabel('y [m]')
 ax_geometry.set_xlabel('x [m]')
 
@@ -30,6 +31,7 @@ usage = dict(use_conductors=True, use_dielectrics=True)
 rt = s.draw_potential(x, y, ax=ax_geometry, **usage)
 fig_single.colorbar(rt, ax=ax_geometry)
 s.draw_field(x, y, ax=ax_geometry, **usage)
+ax_geometry.legend(loc='upper right', fontsize='small')
 
 ax_charge.plot(np.degrees(np.arctan2(*s.conductors[0].centers)), s.conductors[0].sigmas, '.', color=lines[0].get_color())
 ax_charge.plot(np.degrees(np.arctan2(*s.conductors[1].centers)), s.conductors[1].sigmas, '.', color=lines[1].get_color())
@@ -40,7 +42,7 @@ ax_charge.set_title('charge density')
 
 #################
 
-fig = plt.figure('cap2d_cylinder')
+fig = plt.figure('cap_cylinder')
 fig.clf()
 fig.set_tight_layout(True)
 
@@ -52,7 +54,6 @@ ax_radii.set_ylabel('capacitance per unit length [F/m]')
 
 outer_radii = np.logspace(0.1, 2, 20)
 inner_radius = 1
-epsilon = 2
 
 cap_theo = 2 * np.pi * constants.epsilon_0 * epsilon / np.log(outer_radii / inner_radius)
 cap = []
