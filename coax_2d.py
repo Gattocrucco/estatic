@@ -1,4 +1,4 @@
-import cap2d
+import estatic2d
 from matplotlib import pyplot as plt
 from scipy import constants
 import numpy as np
@@ -19,7 +19,7 @@ fig_geometry.set_tight_layout(True)
 
 ax_geometry = fig_geometry.add_subplot(111)
 
-wire = cap2d.Circle(center=(0,0), radius=wire_diameter / 2, segments=N_wire, name='wire', potential=1)
+wire = estatic2d.Circle(center=(0,0), radius=wire_diameter / 2, segments=N_wire, name='wire', potential=1)
 
 shield_x = np.concatenate([
     np.linspace(-shield_width / 2, shield_width / 2, 2 * N_shield),
@@ -34,9 +34,9 @@ shield_y = np.concatenate([
     np.linspace(shield_depth / 2 - shield_width / 2, -shield_depth / 2, N_shield)[1:-1],
 ])
 
-shield = cap2d.Conductor(shield_x, shield_y, name='shield')
+shield = estatic2d.Conductor(shield_x, shield_y, name='shield')
 
-s = cap2d.ConductorSet(wire, shield)
+s = estatic2d.ConductorSet(wire, shield)
 
 s.draw(ax=ax_geometry)
 ax_geometry.legend(loc='best', fontsize='small')
@@ -68,8 +68,8 @@ centers_y = np.outer(np.ones(len(centers_x)), centers_y)
 capacitances = np.empty(centers_x.shape)
 
 for i in np.ndindex(*capacitances.shape):
-    this_wire = cap2d.Circle(center=(centers_x[i], centers_y[i]), radius=wire_diameter / 2, segments=N_wire, potential=1)
-    this_s = cap2d.ConductorSet(this_wire, shield)
+    this_wire = estatic2d.Circle(center=(centers_x[i], centers_y[i]), radius=wire_diameter / 2, segments=N_wire, potential=1)
+    this_s = estatic2d.ConductorSet(this_wire, shield)
     this_s.solve()
     capacitances[i] = this_wire.charge_per_unit_length
 
