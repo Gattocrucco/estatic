@@ -226,20 +226,20 @@ class ConductorSet(object):
         # extract dielectric properties
         if len(self.dielectrics) == 0:
             use_dielectrics = False
-            N_diel = 0
         if use_dielectrics:
             diel_shapes = np.array([len(dielectric.areas) for dielectric in self.dielectrics])
             diel_chis = np.concatenate([
                 np.ones(shape) * dielectric.polarizability
                 for shape, dielectric in zip(diel_shapes, self.dielectrics)
             ])
-            diel_areas = np.concatenate([dielectric.areas for dielectric in self.dielectrics])
-            diel_centers = np.concatenate([dielectric.centers for dielectric in self.dielectrics])
+            diel_centers = np.concatenate([dielectric.centers for dielectric in self.dielectrics], axis=1)
             diel_bottom_left = np.concatenate([dielectric.bottom_left for dielectric in self.dielectrics], axis=1)
             diel_sides = np.concatenate([dielectric.sides for dielectric in self.dielectrics], axis=1)
             N_diel = len(diel_chis)
             
-            assert len(diel_chis) == len(diel_areas) == len(diel_centers) == len(diel_bottom_left[0]) == len(diel_sides[0])
+            assert len(diel_chis) == len(diel_centers[0]) == len(diel_bottom_left[0]) == len(diel_sides[0])
+        else:
+            N_diel = 0
         
         # linear system to solve is Ax=B
         # layout of the equations:
