@@ -61,7 +61,60 @@ class Conductor(object):
         )
         kwargs.update(kw)
         return ax.plot(self.vertexes[0], self.vertexes[1], **kwargs)
+    
+    def compute_potential(self, x, y):
+        where = np.array([x, y])
+        where_shape = (1,) * (len(where.shape) - 1)
+        
+        a = np.sum(self.slopes ** 2, axis=0).reshape(*where_shape, -1)
+        b = 2 * np.sum(self.slopes.reshape(2, *where_shape, -1) * (self.centers.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1)), axis=0)
+        c = np.sum((self.centers.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1)) ** 2, axis=0)
+        
+        l = 1/2 * np.array([-self.lengths, self.lengths]).reshape(2, *where_shape, -1)
+        a = a.reshape(1, *a.shape)
+        b = b.reshape(1, *b.shape)
+        c = c.reshape(1, *c.shape)
+        
+        integrals = -1/2 * (1/a * np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2)) - 2*l + (b/(2*a) + l) * np.log(a*l**2 + b*l + c))
+                
+        potential = np.sum((integrals[1] - integrals[0]) * self.sigmas.reshape(*where_shape, -1), axis=-1) / (2 * np.pi * constants.epsilon_0)
+        
+        assert potential.shape == where.shape[1:]
 
+        return potential
+    
+    def compute_field(self, x, y):
+        where = np.array([x, y])
+        where_shape = (1,) * (len(where.shape) - 1)
+        
+        a = np.sum(self.slopes ** 2, axis=0).reshape(*where_shape, -1)
+        b = 2 * np.sum(self.slopes.reshape(2, *where_shape, -1) * (self.centers.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1)), axis=0)
+        c = np.sum((self.centers.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1)) ** 2, axis=0)
+        
+        assert a.shape == where_shape + b.shape[-1:]
+        assert b.shape == c.shape
+        
+        d = -self.slopes.reshape(2, *where_shape, -1)
+        e = where.reshape(*where.shape, 1) - self.centers.reshape(2, *where_shape, -1)
+        
+        assert e.shape == (2,) + b.shape
+        
+        l = 1/2 * np.array([-self.lengths, self.lengths]).reshape(2, 1, *where_shape, -1)
+
+        a = a.reshape(1, 1, *a.shape)
+        b = b.reshape(1, 1, *b.shape)
+        c = c.reshape(1, 1, *c.shape)
+        d = d.reshape(1, *d.shape)
+        e = e.reshape(1, *e.shape)
+    
+        integrals = d/(2*a) * np.log(a*l**2 + b*l + c) + (2*e - b*d/a) / np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2))
+        
+        field = np.sum((integrals[1] - integrals[0]) * self.sigmas.reshape(1, *where_shape, -1), axis=-1) / (2 * np.pi * constants.epsilon_0)
+        
+        assert field.shape == where.shape
+        
+        return field
+        
 class CircleConductor(Conductor):
     """docstring for SegmentConductor"""
     def __init__(self, center=(0, 0), radius=1, segments=12, **kw):
@@ -136,7 +189,7 @@ class Dielectric(object):
     
     @property
     def polarization_per_unit_length(self):
-        return np.sum(self.Ps * self.areas)
+        return np.sum(self.Ps * self.areas.reshape(1, -1), axis=1)
 
     def draw(self, ax=None, **kw):
         if ax is None:
@@ -159,6 +212,60 @@ class Dielectric(object):
         for i in range(1, x.shape[1]):
             lines.append(ax.plot(x[:,i], y[:,i], **kwargs)[0])
         return lines
+    
+    def compute_potential(self, x, y):
+        where = np.array([x, y])
+        where_shape = (1,) * (len(where.shape) - 1)
+            
+        uv = np.array([
+            self.bottom_left.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1),
+            self.bottom_left.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1) + self.sides.reshape(2, *where_shape, -1)
+        ])
+        u = uv[:,0]
+        v = uv[:,1]
+    
+        f = lambda u, v: -1/2 * (v * np.log(u**2 + v**2) + 2*u * np.arctan(v/u) - 2*v)
+        delta = lambda f, u, v: f(u[1], v[1]) - f(u[1], v[0]) - f(u[0], v[1]) + f(u[0], v[0])
+        integrals_x = delta(f, u, v)
+        integrals_y = delta(f, v, u)
+    
+        integrals = np.array([integrals_x, integrals_y])
+        
+        potential = np.sum(integrals * self.Ps.reshape(2, *where_shape, -1), axis=(0,-1)) / (2 * np.pi * constants.epsilon_0)
+        
+        assert potential.shape == where.shape[1:]
+        
+        return potential
+    
+    def compute_field(self, x, y):
+        where = np.array([x, y])
+        where_shape = (1,) * (len(where.shape) - 1)
+            
+        uv = np.array([
+            self.bottom_left.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1),
+            self.bottom_left.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1) + self.sides.reshape(2, *where_shape, -1)
+        ])
+        u = uv[:,0]
+        v = uv[:,1]
+    
+        f = lambda u, v: -np.arctan(v / u)
+        g = lambda u, v: -1/2 * np.log(u**2 + v**2)
+        delta = lambda f, u, v: f(u[1], v[1]) - f(u[1], v[0]) - f(u[0], v[1]) + f(u[0], v[0])
+        integrals_Px_x = delta(f, u, v)
+        integrals_Py_x = delta(g, u, v)
+        integrals_Px_y = integrals_Py_x # because symmetric in u, v
+        integrals_Py_y = delta(f, v, u)
+        
+        integrals = np.array([
+            [integrals_Px_x, integrals_Py_x],
+            [integrals_Px_y, integrals_Py_y]
+        ])
+        
+        field = np.sum(integrals * self.Ps.reshape(1, 2, *where_shape, -1), axis=(1,-1)) / (2 * np.pi * constants.epsilon_0)
+            
+        assert field.shape == where.shape
+        
+        return field
 
 class RectangleDielectric(Dielectric):
     """docstring for RectangleDielectric"""
@@ -207,6 +314,44 @@ class ConductorSet(object):
             rt += dielectric.draw(*args, **kw)
         return rt
     
+    def draw_potential(self, x, y, ax=None, use_conductors=True, use_dielectrics=True, **kw):
+        if ax is None:
+            ax = plt.gca()
+        
+        X, Y = np.meshgrid(x, y)
+        x_compute = (x[1:] + x[:-1]) / 2
+        y_compute = (y[1:] + y[:-1]) / 2
+        X_compute, Y_compute = np.meshgrid(x_compute, y_compute)
+        
+        potential = self.compute_potential(X_compute, Y_compute, use_conductors=use_conductors, use_dielectrics=use_dielectrics)
+        
+        kwargs = dict(
+            cmap='gray',
+            label='potential'
+        )
+        kwargs.update(kw)
+
+        return ax.pcolormesh(X, Y, potential, **kwargs)
+        
+    def draw_field(self, X, Y, ax=None, use_conductors=True, use_dielectrics=True, **kw):
+        if ax is None:
+            ax = plt.gca()
+        
+        X = np.asarray(X)
+        Y = np.asarray(Y)                
+        if len(X.shape) == 1 and len(Y.shape) == 1:
+            X, Y = np.meshgrid(X, Y)
+        
+        field = self.compute_field(X, Y, use_conductors=use_conductors, use_dielectrics=use_dielectrics)
+
+        kwargs = dict(
+            color='red',
+            label='electric field'
+        )
+        kwargs.update(kw)
+        
+        return ax.quiver(X, Y, *field, **kwargs)
+        
     def solve(self, zero_potential_at_infinity=True, use_dielectrics=True):
         epsilon_0 = 1 #constants.epsilon_0
         
@@ -410,3 +555,17 @@ class ConductorSet(object):
     @property
     def potential_offset(self):
         return self._potential_offset
+    
+    def compute_potential(self, x, y, use_conductors=True, use_dielectrics=True):
+        potential = np.sum([
+            obj.compute_potential(x, y)
+            for obj in (self.conductors if use_conductors else ()) + (self.dielectrics if use_dielectrics else ())
+        ], axis=0)
+        return potential
+    
+    def compute_field(self, x, y, use_conductors=True, use_dielectrics=True):
+        field = np.sum([
+            obj.compute_field(x, y)
+            for obj in (self.conductors if use_conductors else ()) + (self.dielectrics if use_dielectrics else ())
+        ], axis=0)
+        return field

@@ -19,11 +19,17 @@ s = estatic2d.ConductorSet(
 lines = s.draw(ax=ax_geometry)
 ax_geometry.set_title('geometry')
 ax_geometry.grid(linestyle=':')
-ax_geometry.legend(loc='best', fontsize='small')
+ax_geometry.legend(loc='upper right', fontsize='small')
 ax_geometry.set_ylabel('y [m]')
 ax_geometry.set_xlabel('x [m]')
 
 s.solve()
+
+x = y = np.linspace(-2.2, 2.2, 50)
+usage = dict(use_conductors=True, use_dielectrics=True)
+rt = s.draw_potential(x, y, ax=ax_geometry, **usage)
+fig_single.colorbar(rt, ax=ax_geometry)
+s.draw_field(x, y, ax=ax_geometry, **usage)
 
 ax_charge.plot(np.degrees(np.arctan2(*s.conductors[0].centers)), s.conductors[0].sigmas, '.', color=lines[0].get_color())
 ax_charge.plot(np.degrees(np.arctan2(*s.conductors[1].centers)), s.conductors[1].sigmas, '.', color=lines[1].get_color())

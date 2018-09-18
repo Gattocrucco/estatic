@@ -38,13 +38,27 @@ shield = estatic2d.Conductor(shield_x, shield_y, name='shield')
 
 s = estatic2d.ConductorSet(wire, shield)
 
-s.draw(ax=ax_geometry)
-ax_geometry.legend(loc='best', fontsize='small')
-ax_geometry.set_xlabel('x [m]')
-ax_geometry.set_ylabel('y [m]')
+s.solve()
+
+# compute potential and field
+c = shield.centers
+m = np.min(c, axis=1)
+M = np.max(c, axis=1) 
+x = np.linspace(m[0] - (M[0] - m[0]) * 0.1, M[0] + (M[0] - m[0]) * 0.1, 50)
+y = np.linspace(m[1] - (M[1] - m[1]) * 0.1, M[1] + (M[1] - m[1]) * 0.1, 50)
+
+rt = s.draw_potential(x, y, ax=ax_geometry)
+fig_geometry.colorbar(rt, ax=ax_geometry)
+
 ax_geometry.grid(linestyle=':')
 
-s.solve()
+s.draw(ax=ax_geometry)
+
+s.draw_field(x, y, ax=ax_geometry)
+
+ax_geometry.legend(loc='upper right', fontsize='small')
+ax_geometry.set_xlabel('x [m]')
+ax_geometry.set_ylabel('y [m]')
 
 cap = wire.charge_per_unit_length # (potential is 1)
 cap_appr = 2 * np.pi * constants.epsilon_0 / np.log(shield_width / wire_diameter)
@@ -67,9 +81,10 @@ centers_y = np.outer(np.ones(len(centers_x)), centers_y)
 
 capacitances = np.empty(centers_x.shape)
 
+alignment_shield = estatic2d.Conductor(shield_x, shield_y, name='shield')
 for i in np.ndindex(*capacitances.shape):
     this_wire = estatic2d.CircleConductor(center=(centers_x[i], centers_y[i]), radius=wire_diameter / 2, segments=N_wire, potential=1)
-    this_s = estatic2d.ConductorSet(this_wire, shield)
+    this_s = estatic2d.ConductorSet(this_wire, alignment_shield)
     this_s.solve()
     capacitances[i] = this_wire.charge_per_unit_length
 
