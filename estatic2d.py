@@ -208,7 +208,7 @@ class ConductorSet(object):
         return rt
     
     def solve(self, zero_potential_at_infinity=True, use_dielectrics=True):
-        epsilon_0 = constants.epsilon_0
+        epsilon_0 = 1 #constants.epsilon_0
         
         # extract conductor properties
         cond_shapes = np.array([len(conductor.lengths) for conductor in self.conductors])
@@ -385,12 +385,12 @@ class ConductorSet(object):
                 
         solution = linalg.solve(A, B)
         
-        sigmas = solution[:N_cond]
+        sigmas = solution[:N_cond] * constants.epsilon_0 / epsilon_0
         if use_dielectrics:
             Ps = np.array([
                 solution[N_cond:N_cond + N_diel],
                 solution[N_cond + N_diel:N_cond + 2 * N_diel]
-            ])
+            ]) * constants.epsilon_0 / epsilon_0
         if zero_potential_at_infinity:
             logr0 = solution[-1]
         else:
