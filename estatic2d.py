@@ -62,8 +62,8 @@ class Conductor(object):
         kwargs.update(kw)
         return ax.plot(self.vertexes[0], self.vertexes[1], **kwargs)
 
-class Circle(Conductor):
-    """docstring for Segment"""
+class CircleConductor(Conductor):
+    """docstring for SegmentConductor"""
     def __init__(self, center=(0, 0), radius=1, segments=12, **kw):
         if isinstance(segments, int):
             angles = np.linspace(0, 2 * np.pi, segments + 1)[:-1]
@@ -73,10 +73,10 @@ class Circle(Conductor):
             assert len(angles) >= 2
         vertexes_x = center[0] + radius * np.cos(angles)
         vertexes_y = center[1] + radius * np.sin(angles)
-        super(Circle, self).__init__(vertexes_x, vertexes_y, closed=True, **kw)
+        super(CircleConductor, self).__init__(vertexes_x, vertexes_y, closed=True, **kw)
 
-class Segment(Conductor):
-    """docstring for Segment"""
+class SegmentConductor(Conductor):
+    """docstring for SegmentConductor"""
     def __init__(self, endpoint_A=(0, 0), endpoint_B=(1, 1), segments=10, **kw):
         if isinstance(segments, int):
             steps = np.linspace(0, 1, segments + 1)
@@ -86,7 +86,7 @@ class Segment(Conductor):
             assert len(steps) >= 2
         vertexes_x = endpoint_A[0] + (endpoint_B[0] - endpoint_A[0]) * steps
         vertexes_y = endpoint_A[1] + (endpoint_B[1] - endpoint_A[1]) * steps
-        super(Segment, self).__init__(vertexes_x, vertexes_y, closed=False, **kw)
+        super(SegmentConductor, self).__init__(vertexes_x, vertexes_y, closed=False, **kw)
 
 class Dielectric(object):
     """list of rectangles"""
@@ -160,8 +160,8 @@ class Dielectric(object):
             lines.append(ax.plot(x[:,i], y[:,i], **kwargs)[0])
         return lines
 
-class Rectangle(Dielectric):
-    """docstring for Rectangle"""
+class RectangleDielectric(Dielectric):
+    """docstring for RectangleDielectric"""
     def __init__(self, bottom_left=(0, 0), sides=(1, 1), segments=(10, 10), **kw):
         bottom_left_x = bottom_left[0] + sides[0] * np.arange(segments[0]) / segments[0]
         bottom_left_y = bottom_left[1] + sides[1] * np.arange(segments[1]) / segments[1]
@@ -173,7 +173,7 @@ class Rectangle(Dielectric):
         width = base * sides[0] / segments[0]
         height = base * sides[1] / segments[1]
         
-        super(Rectangle, self).__init__(bottom_left_x.flatten(), bottom_left_y.flatten(), width.flatten(), height.flatten(), **kw)        
+        super(RectangleDielectric, self).__init__(bottom_left_x.flatten(), bottom_left_y.flatten(), width.flatten(), height.flatten(), **kw)        
 
 class ConductorSet(object):
     """docstring for ConductorSet"""

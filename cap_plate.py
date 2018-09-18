@@ -12,9 +12,9 @@ ax_geometry, ax_charge = fig_single.subplots(2, 1, sharex=True)
 # steps = 100
 steps = np.concatenate([[0], np.sort(np.random.rand(98)), [1]])
 s = estatic2d.ConductorSet(
-    estatic2d.Segment((0,0), (10,0), steps, name='bottom', potential=-1),
-    estatic2d.Segment((0,1), (10,1), steps, name='top', potential=1),
-    estatic2d.Rectangle(bottom_left=(0,0), sides=(10,1), segments=(10,10), epsilon_rel=10)
+    estatic2d.SegmentConductor((0,0), (10,0), steps, name='bottom', potential=-1),
+    estatic2d.SegmentConductor((0,1), (10,1), steps, name='top', potential=1),
+    estatic2d.RectangleDielectric(bottom_left=(0,0), sides=(10,1), segments=(10,10), epsilon_rel=10)
 )
 
 lines = s.draw(ax=ax_geometry)
@@ -52,9 +52,9 @@ for distance in distances:
     # steps = 100
     steps = np.concatenate([[0], np.sort(np.random.rand(98)), [1]])
     s = estatic2d.ConductorSet(
-        estatic2d.Segment((0, 0),        (width, 0),        steps, potential=1000),
-        estatic2d.Segment((0, distance), (width, distance), steps, potential=1001),
-        estatic2d.Rectangle(bottom_left=(0,0), sides=(width, distance), segments=(10,10), epsilon_rel=epsilon)
+        estatic2d.SegmentConductor((0, 0),        (width, 0),        steps, potential=1000),
+        estatic2d.SegmentConductor((0, distance), (width, distance), steps, potential=1001),
+        estatic2d.RectangleDielectric(bottom_left=(0,0), sides=(width, distance), segments=(10,10), epsilon_rel=epsilon)
     )
     s.solve(use_dielectrics=True)
     q1 = s.conductors[0].charge_per_unit_length

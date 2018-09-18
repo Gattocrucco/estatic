@@ -11,9 +11,9 @@ ax_geometry, ax_charge = fig_single.subplots(2, 1)
 
 angles = 2 * np.pi * np.random.rand(200)
 s = estatic2d.ConductorSet(
-    estatic2d.Circle((0,0), 1, np.sort(angles[:100]), name='inner', potential=1),
-    estatic2d.Circle((0,0), 2, np.sort(angles[100:]), name='outer', potential=0),
-    estatic2d.Rectangle((-2,-2), (4,4), (20,20), epsilon_rel=2)
+    estatic2d.CircleConductor((0,0), 1, np.sort(angles[:100]), name='inner', potential=1),
+    estatic2d.CircleConductor((0,0), 2, np.sort(angles[100:]), name='outer', potential=0),
+    estatic2d.RectangleDielectric((-2,-2), (4,4), (20,20), epsilon_rel=2)
 )
 
 lines = s.draw(ax=ax_geometry)
@@ -54,9 +54,9 @@ for outer_radius in outer_radii:
     print('computing outer radius {:.2g}...'.format(outer_radius))
     angles = 2 * np.pi * np.random.rand(200)
     s = estatic2d.ConductorSet(
-        estatic2d.Circle((0, 0), outer_radius, np.sort(angles[:100]), potential=2),
-        estatic2d.Circle((0, 0), inner_radius, np.sort(angles[100:]), potential=3),
-        estatic2d.Rectangle((-outer_radius,-outer_radius), (2*outer_radius,2*outer_radius), (20,20), epsilon_rel=epsilon)
+        estatic2d.CircleConductor((0, 0), outer_radius, np.sort(angles[:100]), potential=2),
+        estatic2d.CircleConductor((0, 0), inner_radius, np.sort(angles[100:]), potential=3),
+        estatic2d.RectangleDielectric((-outer_radius,-outer_radius), (2*outer_radius,2*outer_radius), (20,20), epsilon_rel=epsilon)
     )
     s.solve()
     q1 = s.conductors[0].charge_per_unit_length
@@ -90,9 +90,9 @@ for offset in offsets:
     print('computing offset {:.2g}...'.format(offset))
     angles = 2 * np.pi * np.random.rand(200)
     s = estatic2d.ConductorSet(
-        estatic2d.Circle((offset, 0), outer_radius, np.sort(angles[:100]), potential=2),
-        estatic2d.Circle((0, 0), inner_radius, np.sort(angles[100:]), potential=3),
-        estatic2d.Rectangle((-outer_radius,-outer_radius), (2*outer_radius,2*outer_radius), (20,20), epsilon_rel=epsilon)
+        estatic2d.CircleConductor((offset, 0), outer_radius, np.sort(angles[:100]), potential=2),
+        estatic2d.CircleConductor((0, 0), inner_radius, np.sort(angles[100:]), potential=3),
+        estatic2d.RectangleDielectric((-outer_radius,-outer_radius), (2*outer_radius,2*outer_radius), (20,20), epsilon_rel=epsilon)
     )
     s.solve()
     q1 = s.conductors[0].charge_per_unit_length

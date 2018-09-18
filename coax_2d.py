@@ -19,7 +19,7 @@ fig_geometry.set_tight_layout(True)
 
 ax_geometry = fig_geometry.add_subplot(111)
 
-wire = estatic2d.Circle(center=(0,0), radius=wire_diameter / 2, segments=N_wire, name='wire', potential=1)
+wire = estatic2d.CircleConductor(center=(0,0), radius=wire_diameter / 2, segments=N_wire, name='wire', potential=1)
 
 shield_x = np.concatenate([
     np.linspace(-shield_width / 2, shield_width / 2, 2 * N_shield),
@@ -68,7 +68,7 @@ centers_y = np.outer(np.ones(len(centers_x)), centers_y)
 capacitances = np.empty(centers_x.shape)
 
 for i in np.ndindex(*capacitances.shape):
-    this_wire = estatic2d.Circle(center=(centers_x[i], centers_y[i]), radius=wire_diameter / 2, segments=N_wire, potential=1)
+    this_wire = estatic2d.CircleConductor(center=(centers_x[i], centers_y[i]), radius=wire_diameter / 2, segments=N_wire, potential=1)
     this_s = estatic2d.ConductorSet(this_wire, shield)
     this_s.solve()
     capacitances[i] = this_wire.charge_per_unit_length
