@@ -1,0 +1,134 @@
+import estatic2d
+from matplotlib import pyplot as plt
+import numpy as np
+
+###### parameters ######
+# all units MKS
+housing_detector_top_margin = 5.0e-3
+housing_detector_bottom_margin = 5.0e-3
+housing_detector_left_margin = 5.0e-3
+housing_detector_right_margin = 5.0e-3
+housing_potential = 0.0
+
+detector_height = 30.0e-3
+detector_width = 5.0e-3
+detector_epsilon = 11.7
+
+electrode_spacing = 500e-6 # center-center
+electrode_hi_width = 100e-6
+electrode_lo_width = 40e-6
+electrode_hi_potential = 50.0
+electrode_lo_potential = 47.0
+########################
+
+fig = plt.figure('ihv')
+fig.clf()
+fig.set_tight_layout(True)
+
+ax = fig.add_subplot(111)
+
+###### defines objects ######
+
+detector_bottom_left = np.array([0, 0])
+
+detector = estatic2d.RectangleDielectric(
+    bottom_left=detector_bottom_left,
+    sides=(detector_width, detector_height),
+    name='detector',
+    epsilon_rel=detector_epsilon
+)
+
+housing = estatic2d.RectangleConductor(
+    bottom_left=detector_bottom_left - np.array([housing_detector_left_margin, housing_detector_bottom_margin]),
+    sides=(
+        detector_width + housing_detector_left_margin + housing_detector_right_margin,
+        detector_height + housing_detector_top_margin + housing_detector_bottom_margin
+    ),
+    name='housing',
+    potential=housing_potential
+)
+
+hi_electrodes = []
+draw_kw = dict(
+    color='red',
+)
+x = detector_bottom_left[0] + electrode_spacing
+labeled = True
+while x + electrode_spacing * 0.9 <= detector_bottom_left[0] + detector_width:
+    hi_electrodes.append(estatic2d.SegmentConductor(
+        center=(x, detector_bottom_left[1] + detector_height),
+        vector_A_to_B=(electrode_hi_width, 0),
+        segments=10,
+        name='electrode',
+        potential=electrode_hi_potential,
+        draw_kwargs=draw_kw
+    ))
+    hi_electrodes.append(estatic2d.SegmentConductor(
+        center=(x, detector_bottom_left[1]),
+        vector_A_to_B=(electrode_hi_width, 0),
+        segments=10,
+        name='electrode',
+        potential=-electrode_hi_potential,
+        draw_kwargs=draw_kw
+    ))
+    x += 2 * electrode_spacing
+    if labeled:
+        draw_kw = dict(**draw_kw)
+        draw_kw.update(label=None)
+        labeled = False
+
+lo_electrodes = []
+draw_kw = dict(
+    color='blue',
+)
+x = detector_bottom_left[0] + 2 * electrode_spacing
+labeled = True
+while x + electrode_spacing * 0.9 <= detector_bottom_left[0] + detector_width:
+    lo_electrodes.append(estatic2d.SegmentConductor(
+        center=(x, detector_bottom_left[1] + detector_height),
+        vector_A_to_B=(electrode_lo_width, 0),
+        segments=10,
+        name='electrode',
+        potential=electrode_lo_potential,
+        draw_kwargs=draw_kw
+    ))
+    lo_electrodes.append(estatic2d.SegmentConductor(
+        center=(x, detector_bottom_left[1]),
+        vector_A_to_B=(electrode_lo_width, 0),
+        segments=10,
+        name='electrode',
+        potential=-electrode_lo_potential,
+        draw_kwargs=draw_kw
+    ))
+    x += 2 * electrode_spacing
+    if labeled:
+        draw_kw = dict(**draw_kw)
+        draw_kw.update(label=None)
+        labeled = False
+
+s = estatic2d.ConductorSet(detector, housing, *hi_electrodes, *lo_electrodes)
+
+###### compute ######
+
+s.solve()
+
+###### draw ######
+
+margin = 1e-3
+x = np.linspace(
+    detector_bottom_left[0] - housing_detector_left_margin - margin,
+    detector_bottom_left[0] + detector_width + housing_detector_right_margin + margin,
+    50
+)
+y = np.linspace(
+    detector_bottom_left[1] - housing_detector_bottom_margin - margin,
+    detector_bottom_left[1] + detector_height + housing_detector_top_margin + margin,
+    50
+)
+s.draw_potential(x, y)
+s.draw(ax=ax)
+s.draw_field(x, y, zorder=10)
+
+ax.legend(loc='upper right', fontsize='small')
+
+fig.show()

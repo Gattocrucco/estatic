@@ -35,13 +35,14 @@ ax_geometry.legend(loc='best', fontsize='small')
 
 fig_single.colorbar(rt, ax=ax_geometry)
 
-l = s.conductors[0].centers[0]
-ax_charge.plot(l, s.conductors[0].sigmas, '.', color=lines[0].get_color())
-ax_charge.plot(l, s.conductors[1].sigmas, '.', color=lines[1].get_color())
+ax_charge.plot(s.conductors[0].centers[0], s.conductors[0].sigmas, '.', color=lines[0].get_color())
+ax_charge.plot(s.conductors[1].centers[0], s.conductors[1].sigmas, '.', color=lines[1].get_color())
 ax_charge.set_ylabel('charge surface density [C/m$^2$]')
 ax_charge.set_xlabel('x [m]')
 ax_charge.grid(linestyle=':')
 ax_charge.set_title('charge density')
+
+#############
 
 fig = plt.figure('cap_plate')
 fig.clf()

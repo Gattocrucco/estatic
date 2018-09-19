@@ -3,7 +3,9 @@ from scipy import special
 from matplotlib import pyplot as plt
 import numpy as np
 
-fig = plt.figure('integral')
+# integral 1/x * atan(a/x)
+
+fig = plt.figure('integral_2')
 fig.clf()
 
 ax = fig.add_subplot(111)

@@ -4,7 +4,7 @@ from scipy import constants, linalg
 
 class Conductor(object):
     """docstring for Conductor"""
-    def __init__(self, vertexes_x, vertexes_y, closed=True, potential=0, name='conductor'):
+    def __init__(self, vertexes_x, vertexes_y, closed=True, potential=0, name='conductor', draw_kwargs=dict()):
         vertexes_x = np.asarray(vertexes_x)
         vertexes_y = np.asarray(vertexes_y)
         
@@ -20,12 +20,20 @@ class Conductor(object):
             self.vertexes = np.concatenate([self.vertexes, self.vertexes[:,0:1]], axis=1)
             
         assert isinstance(name, str)
+        assert isinstance(draw_kwargs, dict)
+        assert np.isscalar(potential)
+        
+        self._draw_kwargs = draw_kwargs
         
         self.closed = closed
-        self.potential = potential
+        self._potential = potential
         self.name = name
         
         self._sigmas = None
+    
+    @property
+    def potential(self):
+        return self._potential
     
     @property
     def lengths(self):
@@ -59,6 +67,7 @@ class Conductor(object):
             markersize=4,
             label='{:s} V = {:.2g}'.format(self.name, self.potential)
         )
+        kwargs.update(self._draw_kwargs)
         kwargs.update(kw)
         return ax.plot(self.vertexes[0], self.vertexes[1], **kwargs)
     
@@ -106,8 +115,13 @@ class Conductor(object):
         c = c.reshape(1, 1, *c.shape)
         d = d.reshape(1, *d.shape)
         e = e.reshape(1, *e.shape)
+        w = where.reshape(1, *where.shape, 1)
     
-        integrals = d/(2*a) * np.log(a*l**2 + b*l + c) + (2*e - b*d/a) / np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2))
+        integrals = d/(2*a) * np.log(a*l**2 + b*l + c) + np.where(
+            4*a*c - b**2 > 0,
+            (2*e - b*d/a) / np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2)),
+            (-d*b/(2*a) + e) / (a * (w - b/(2*a)))
+        )
         
         field = np.sum((integrals[1] - integrals[0]) * self.sigmas.reshape(1, *where_shape, -1), axis=-1) / (2 * np.pi * constants.epsilon_0)
         
@@ -130,17 +144,61 @@ class CircleConductor(Conductor):
 
 class SegmentConductor(Conductor):
     """docstring for SegmentConductor"""
-    def __init__(self, endpoint_A=(0, 0), endpoint_B=(1, 1), segments=10, **kw):
+    def __init__(self, endpoint_A=None, endpoint_B=None, segments=10, center=None, vector_A_to_B=None, **kw):
         if isinstance(segments, int):
             steps = np.linspace(0, 1, segments + 1)
         else:
             steps = np.asarray(segments)
             assert len(steps.shape) == 1
             assert len(steps) >= 2
+        
+        if not (endpoint_A is None) and not (endpoint_B is None):
+            pass
+        elif not (endpoint_A is None) and not (vector_A_to_B is None):
+            endpoint_B = (
+                endpoint_A[0] + vector_A_to_B[0],
+                endpoint_A[1] + vector_A_to_B[1]
+            )
+        elif not (center is None) and not (vector_A_to_B is None):
+            endpoint_A = (
+                center[0] - vector_A_to_B[0] / 2,
+                center[1] - vector_A_to_B[1] / 2,
+            )
+            endpoint_B = (
+                center[0] + vector_A_to_B[0] / 2,
+                center[1] + vector_A_to_B[1] / 2,
+            )
+        elif not (endpoint_B is None) and not (vector_A_to_B is None):
+            endpoint_A = (
+                endpoint_B[0] - vector_A_to_B[0],
+                endpoint_B[1] - vector_A_to_B[1]
+            )
+        else:
+            raise ValueError('insufficient geometrical information')
+        
         vertexes_x = endpoint_A[0] + (endpoint_B[0] - endpoint_A[0]) * steps
         vertexes_y = endpoint_A[1] + (endpoint_B[1] - endpoint_A[1]) * steps
+        
         super(SegmentConductor, self).__init__(vertexes_x, vertexes_y, closed=False, **kw)
 
+class RectangleConductor(Conductor):
+    """docstring for RectangleConductor"""
+    def __init__(self, bottom_left=(0, 0), sides=(1, 1), segments=(10, 10), **kw):
+        vertexes_x = np.concatenate([
+            np.linspace(bottom_left[0], bottom_left[0] + sides[0], segments[0] + 1)[:-1],
+            np.ones(segments[1]) * (bottom_left[0] + sides[0]),
+            np.linspace(bottom_left[0] + sides[0], bottom_left[0], segments[0] + 1)[:-1],
+            np.ones(segments[1]) * bottom_left[0]
+        ])
+        vertexes_y = np.concatenate([
+            np.ones(segments[0]) * bottom_left[1],
+            np.linspace(bottom_left[1], bottom_left[1] + sides[1], segments[1] + 1)[:-1],
+            np.ones(segments[0]) * (bottom_left[1] + sides[1]),
+            np.linspace(bottom_left[1] + sides[1], bottom_left[1], segments[1] + 1)[:-1]
+        ])
+        assert len(vertexes_x) == len(vertexes_y) == 2 * (segments[0] + segments[1])
+        super(RectangleConductor, self).__init__(vertexes_x, vertexes_y, closed=True, **kw)
+        
 class Dielectric(object):
     """list of rectangles"""
     def __init__(self, bottom_left_x, bottom_left_y, width, height, epsilon_rel=1, name='dielectric'):
@@ -195,7 +253,7 @@ class Dielectric(object):
         if ax is None:
             ax = plt.gca()
         kwargs = dict(
-            label='{:s} $\\varepsilon$ = {:.2g}'.format(self._name, 1 + self._chi)
+            label='{:s} $\\varepsilon$ = {:.4g}'.format(self._name, 1 + self._chi)
         )
         kwargs.update(kw)
         
@@ -308,10 +366,10 @@ class ConductorSet(object):
     
     def draw(self, *args, **kw):
         rt = []
-        for conductor in self.conductors:
-            rt += conductor.draw(*args, **kw)
         for dielectric in self.dielectrics:
             rt += dielectric.draw(*args, **kw)
+        for conductor in self.conductors:
+            rt += conductor.draw(*args, **kw)
         return rt
     
     def draw_potential(self, x, y, ax=None, use_conductors=True, use_dielectrics=True, **kw):
@@ -448,8 +506,13 @@ class ConductorSet(object):
             c = c.reshape(1, 1, *c.shape)
             d = d.reshape(1, *d.shape)
             e = e.reshape(1, *e.shape)
+            w = diel_centers.reshape(1, 2, -1, 1)
         
-            A_dc = d/(2*a) * np.log(a*l**2 + b*l + c) + (2*e - b*d/a) / np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2))
+            A_dc = d/(2*a) * np.log(a*l**2 + b*l + c) + np.where(
+                4*a*c - b**2 > 0,
+                (2*e - b*d/a) / np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2)),
+                (-d*b/(2*a) + e) / (a * (w - b/(2*a)))
+            )
         
             assert A_dc.shape == (2, 2, N_diel, N_cond)
         
