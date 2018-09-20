@@ -1,6 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import constants, linalg
+import numexpr
 
 class Conductor(object):
     """docstring for Conductor"""
@@ -84,7 +85,7 @@ class Conductor(object):
         b = b.reshape(1, *b.shape)
         c = c.reshape(1, *c.shape)
         
-        integrals = -1/2 * (1/a * np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2)) - 2*l + (b/(2*a) + l) * np.log(a*l**2 + b*l + c))
+        integrals = numexpr.evaluate('-1/2 * (1/a * sqrt(4*a*c - b**2) * arctan((2*a*l + b) / sqrt(4*a*c - b**2)) - 2*l + (b/(2*a) + l) * log(a*l**2 + b*l + c))')
                 
         potential = np.sum((integrals[1] - integrals[0]) * self.sigmas.reshape(*where_shape, -1), axis=-1) / (2 * np.pi * constants.epsilon_0)
         
@@ -117,11 +118,11 @@ class Conductor(object):
         e = e.reshape(1, *e.shape)
         w = where.reshape(1, *where.shape, 1)
     
-        integrals = d/(2*a) * np.log(a*l**2 + b*l + c) + np.where(
-            4*a*c - b**2 > 0,
-            (2*e - b*d/a) / np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2)),
-            (-d*b/(2*a) + e) / (a * (w - b/(2*a)))
-        )
+        integrals = numexpr.evaluate('d/(2*a) * log(a*l**2 + b*l + c) + where(\
+            4*a*c - b**2 > 0,\
+            (2*e - b*d/a) / sqrt(4*a*c - b**2) * arctan((2*a*l + b) / sqrt(4*a*c - b**2)),\
+            (-d*b/(2*a) + e) / (a * (w - b/(2*a)))\
+        )')
         
         field = np.sum((integrals[1] - integrals[0]) * self.sigmas.reshape(1, *where_shape, -1), axis=-1) / (2 * np.pi * constants.epsilon_0)
         
@@ -221,6 +222,24 @@ class Dielectric(object):
         
         self._Ps = None
     
+    def __add__(self, obj):
+        if not isinstance(obj, Dielectric):
+            raise TypeError("unsupported operand types(s) for +: '{}' and '{}'".format(type(self), type(obj)))
+        bottom_left = np.concatenate([self.bottom_left, obj.bottom_left], axis=1)
+        sides = np.concatenate([self.sides, obj.sides], axis=1)
+        
+        # Mow to add epsilon_rel and name?
+        # maybe support different epsilon_rel for each piece of the dielectric;
+        # comes at no computational cost.
+        epsilon_rel = 1 + self.polarizability
+        name = self.name
+        
+        return Dielectric(bottom_left[0], bottom_left[1], sides[0], sides[1], epsilon_rel, name)
+    
+    @property
+    def name(self):
+        return self._name
+    
     @property
     def centers(self):
         return self._c + self._L / 2
@@ -282,7 +301,7 @@ class Dielectric(object):
         u = uv[:,0]
         v = uv[:,1]
     
-        f = lambda u, v: -1/2 * (v * np.log(u**2 + v**2) + 2*u * np.arctan(v/u) - 2*v)
+        f = lambda u, v: numexpr.evaluate('-1/2 * (v * log(u**2 + v**2) + 2*u * arctan(v/u) - 2*v)')
         delta = lambda f, u, v: f(u[1], v[1]) - f(u[1], v[0]) - f(u[0], v[1]) + f(u[0], v[0])
         integrals_x = delta(f, u, v)
         integrals_y = delta(f, v, u)
@@ -306,8 +325,8 @@ class Dielectric(object):
         u = uv[:,0]
         v = uv[:,1]
     
-        f = lambda u, v: -np.arctan(v / u)
-        g = lambda u, v: -1/2 * np.log(u**2 + v**2)
+        f = lambda u, v: numexpr.evaluate('-arctan(v / u)')
+        g = lambda u, v: numexpr.evaluate('-1/2 * log(u**2 + v**2)')
         delta = lambda f, u, v: f(u[1], v[1]) - f(u[1], v[0]) - f(u[0], v[1]) + f(u[0], v[0])
         integrals_Px_x = delta(f, u, v)
         integrals_Py_x = delta(g, u, v)
@@ -391,16 +410,21 @@ class ConductorSet(object):
 
         return ax.pcolormesh(X, Y, potential, **kwargs)
         
-    def draw_field(self, X, Y, ax=None, use_conductors=True, use_dielectrics=True, **kw):
+    def draw_field(self, x, y, ax=None, use_conductors=True, use_dielectrics=True, direction_only=False, **kw):
         if ax is None:
             ax = plt.gca()
         
-        X = np.asarray(X)
-        Y = np.asarray(Y)                
-        if len(X.shape) == 1 and len(Y.shape) == 1:
-            X, Y = np.meshgrid(X, Y)
+        # flattening is needed for quiver()
+        x = np.asarray(x).reshape(-1)
+        y = np.asarray(y).reshape(-1)
         
-        field = self.compute_field(X, Y, use_conductors=use_conductors, use_dielectrics=use_dielectrics)
+        assert x.shape == y.shape
+        
+        field = self.compute_field(x, y, use_conductors=use_conductors, use_dielectrics=use_dielectrics)
+        if direction_only:
+            norm = np.sqrt(np.sum(field ** 2, axis=0))
+            norm[norm == 0] = 1
+            field /= norm
 
         kwargs = dict(
             color='red',
@@ -408,10 +432,14 @@ class ConductorSet(object):
         )
         kwargs.update(kw)
         
-        return ax.quiver(X, Y, *field, **kwargs)
+        return ax.quiver(x, y, *field, **kwargs)
         
-    def solve(self, zero_potential_at_infinity=True, use_dielectrics=True):
+    def solve(self, zero_potential_at_infinity=True, use_dielectrics=True, verbose=True):
         epsilon_0 = 1 #constants.epsilon_0
+        
+        printer = print if verbose else lambda *args: None
+        
+        printer('***** ConductorSet.solve *****')
         
         # extract conductor properties
         cond_shapes = np.array([len(conductor.lengths) for conductor in self.conductors])
@@ -423,8 +451,10 @@ class ConductorSet(object):
         cond_centers = np.concatenate([conductor.centers for conductor in self.conductors], axis=1)
         cond_lengths = np.concatenate([conductor.lengths for conductor in self.conductors])
         N_cond = len(cond_potentials)
-        
+                
         assert len(cond_slopes[0]) == len(cond_centers[0]) == len(cond_lengths) == len(cond_potentials)
+
+        printer('{:d} conductor objects for a total of {:d} segments'.format(len(cond_shapes), N_cond))
 
         # extract dielectric properties
         if len(self.dielectrics) == 0:
@@ -441,8 +471,13 @@ class ConductorSet(object):
             N_diel = len(diel_chis)
             
             assert len(diel_chis) == len(diel_centers[0]) == len(diel_bottom_left[0]) == len(diel_sides[0])
+            
+            printer('{:d} dielectric objects for a total of {:d} rectangles'.format(len(diel_shapes), N_diel))
         else:
             N_diel = 0
+            
+            printer('no dielectrics')
+        
         
         # linear system to solve is Ax=B
         # layout of the equations:
@@ -468,6 +503,7 @@ class ConductorSet(object):
         ])
         
         # construct A_cc
+        printer('computing conductor->conductor coefficients...')
         
         # careful: l, a used also in A_dc
         a = np.sum(cond_slopes ** 2, axis=0).reshape(1, -1)
@@ -482,14 +518,17 @@ class ConductorSet(object):
         b = b.reshape(1, *b.shape)
         c = c.reshape(1, *c.shape)
         
-        A_cc = -1/2 * (1/a * np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2)) - 2*l + (b/(2*a) + l) * np.log(a*l**2 + b*l + c))
+        # numexpr 2x faster
+        A_cc = numexpr.evaluate('-1/2 * (1/a * sqrt(4*a*c - b**2) * arctan((2*a*l + b) / sqrt(4*a*c - b**2)) - 2*l + (b/(2*a) + l) * log(a*l**2 + b*l + c))')
         
         assert A_cc.shape == (2, N_cond, N_cond)
         
+        # using np.diff(A_cc, axis=0) is 2x slower!
         A_cc = (A_cc[1] - A_cc[0]) / (2 * np.pi * epsilon_0)
         
         if use_dielectrics:
             # construct A_dc
+            printer('computing conductor->dielectric coefficients...')
         
             b = 2 * np.sum(cond_slopes.reshape(2, 1, -1) * (cond_centers.reshape(2, 1, -1) - diel_centers.reshape(2, -1, 1)), axis=0)
             c = np.sum((cond_centers.reshape(2, 1, -1) - diel_centers.reshape(2, -1, 1)) ** 2, axis=0)
@@ -508,11 +547,11 @@ class ConductorSet(object):
             e = e.reshape(1, *e.shape)
             w = diel_centers.reshape(1, 2, -1, 1)
         
-            A_dc = d/(2*a) * np.log(a*l**2 + b*l + c) + np.where(
-                4*a*c - b**2 > 0,
-                (2*e - b*d/a) / np.sqrt(4*a*c - b**2) * np.arctan((2*a*l + b) / np.sqrt(4*a*c - b**2)),
-                (-d*b/(2*a) + e) / (a * (w - b/(2*a)))
-            )
+            A_dc = numexpr.evaluate('d/(2*a) * log(a*l**2 + b*l + c) + where(\
+                4*a*c - b**2 > 0,\
+                (2*e - b*d/a) / sqrt(4*a*c - b**2) * arctan((2*a*l + b) / sqrt(4*a*c - b**2)),\
+                (-d*b/(2*a) + e) / (a * (w - b/(2*a)))\
+            )')
         
             assert A_dc.shape == (2, 2, N_diel, N_cond)
         
@@ -520,6 +559,7 @@ class ConductorSet(object):
             A_dc = A_dc.reshape(2 * N_diel, N_cond)
         
             # construct A_cd
+            printer('computing dielectric->conductor coefficients...')
         
             uv = np.array([
                 diel_bottom_left.reshape(2, -1, 1) - cond_centers.reshape(2, 1, -1),
@@ -528,7 +568,7 @@ class ConductorSet(object):
             u = uv[:,0]
             v = uv[:,1]
         
-            f = lambda u, v: -1/2 * (v * np.log(u**2 + v**2) + 2*u * np.arctan(v/u) - 2*v)
+            f = lambda u, v: numexpr.evaluate('-1/2 * (v * log(u**2 + v**2) + 2*u * arctan(v/u) - 2*v)')
             delta = lambda f, u, v: f(u[1], v[1]) - f(u[1], v[0]) - f(u[0], v[1]) + f(u[0], v[0])
             A_cd_x = delta(f, u, v)
             A_cd_y = delta(f, v, u)
@@ -539,6 +579,7 @@ class ConductorSet(object):
             # We did the transposition at the end because, if done before, flattening x and y would have been more complicated.
         
             # construct A_dd
+            printer('computing dielectric->dielectric coefficients...')
         
             uv = np.array([
                 diel_bottom_left.reshape(2, -1, 1) - diel_centers.reshape(2, 1, -1),
@@ -547,8 +588,8 @@ class ConductorSet(object):
             u = uv[:,0]
             v = uv[:,1]
         
-            f = lambda u, v: -np.arctan(v / u)
-            g = lambda u, v: -1/2 * np.log(u**2 + v**2)
+            f = lambda u, v: numexpr.evaluate('-arctan(v / u)')
+            g = lambda u, v: numexpr.evaluate('-1/2 * log(u**2 + v**2)')
             A_dd_Px_x = delta(f, u, v) * diel_chis.reshape(1, -1)
             A_dd_Py_x = delta(g, u, v) * diel_chis.reshape(1, -1)
             A_dd_Px_y = A_dd_Py_x # because symmetric in u, v
@@ -590,7 +631,8 @@ class ConductorSet(object):
         A = np.concatenate([A_cc_cd_offset, A_dc_dd, A_charge], axis=0)
         
         assert A.shape == (len(B), len(B))
-                
+        
+        printer('solving linear system...')
         solution = linalg.solve(A, B)
         
         sigmas = solution[:N_cond] * constants.epsilon_0 / epsilon_0
@@ -614,6 +656,8 @@ class ConductorSet(object):
                 self.dielectrics[i]._Ps = Ps[idxs[i]:idxs[i+1]]
         
         self._potential_offset = -np.sum(cond_lengths) * logr0 / (2 * np.pi * epsilon_0)
+        
+        printer('************ done ************')
     
     @property
     def potential_offset(self):

@@ -4,7 +4,7 @@ import numpy as np
 
 ###### parameters ######
 # all units MKS
-housing_detector_top_margin = 5.0e-3
+housing_detector_top_margin = 5e-3
 housing_detector_bottom_margin = 5.0e-3
 housing_detector_left_margin = 5.0e-3
 housing_detector_right_margin = 5.0e-3
@@ -29,14 +29,32 @@ ax = fig.add_subplot(111)
 
 ###### defines objects ######
 
+print('defining objects...')
+
 detector_bottom_left = np.array([0, 0])
 
-detector = estatic2d.RectangleDielectric(
-    bottom_left=detector_bottom_left,
-    sides=(detector_width, detector_height),
+detector_bulk = estatic2d.RectangleDielectric(
+    bottom_left=(detector_bottom_left[0], detector_bottom_left[1] + electrode_spacing),
+    sides=(detector_width, detector_height - 2 * electrode_spacing),
+    segments=(10, 10),
     name='detector',
     epsilon_rel=detector_epsilon
 )
+
+detector_top = estatic2d.RectangleDielectric(
+    bottom_left=detector_bottom_left,
+    sides=(detector_width, electrode_spacing),
+    segments=(100, 10)
+)
+
+detector_bottom = estatic2d.RectangleDielectric(
+    bottom_left=(detector_bottom_left[0], detector_bottom_left[1] + detector_height - electrode_spacing),
+    sides=(detector_width, electrode_spacing),
+    segments=(100, 10)
+)
+
+# keep detector_bulk first!
+detector = detector_bulk + detector_top + detector_bottom
 
 housing = estatic2d.RectangleConductor(
     bottom_left=detector_bottom_left - np.array([housing_detector_left_margin, housing_detector_bottom_margin]),
@@ -110,24 +128,46 @@ s = estatic2d.ConductorSet(detector, housing, *hi_electrodes, *lo_electrodes)
 
 ###### compute ######
 
+print('computing...')
 s.solve()
 
 ###### draw ######
 
-margin = 1e-3
-x = np.linspace(
-    detector_bottom_left[0] - housing_detector_left_margin - margin,
-    detector_bottom_left[0] + detector_width + housing_detector_right_margin + margin,
-    50
-)
-y = np.linspace(
-    detector_bottom_left[1] - housing_detector_bottom_margin - margin,
-    detector_bottom_left[1] + detector_height + housing_detector_top_margin + margin,
-    50
-)
-s.draw_potential(x, y)
+print('drawing...')
+# margin = 1e-3
+# x = np.linspace(
+#     detector_bottom_left[0] - housing_detector_left_margin - margin,
+#     detector_bottom_left[0] + detector_width + housing_detector_right_margin + margin,
+#     50
+# )
+# y = np.linspace(
+#     detector_bottom_left[1] - housing_detector_bottom_margin - margin,
+#     detector_bottom_left[1] + detector_height + housing_detector_top_margin + margin,
+#     50
+# )
+# x = np.linspace(
+#     detector_bottom_left[0] - 0.02 * detector_width,
+#     detector_bottom_left[0] + 0.12 * detector_width,
+#     50
+# )
+# y = np.linspace(
+#     detector_bottom_left[1] + 0.68 * detector_height,
+#     detector_bottom_left[1] + 0.82 * detector_height,
+#     50
+# )
+# x = np.linspace(
+#     detector_bottom_left[0] + 1.9 * electrode_spacing,
+#     detector_bottom_left[0] + 3.1 * electrode_spacing,
+#     50
+# )
+# y = np.linspace(
+#     detector_bottom_left[1] + detector_height - electrode_spacing / 4,
+#     detector_bottom_left[1] + detector_height + electrode_spacing / 4,
+#     50
+# )
+# s.draw_potential(x, y)
 s.draw(ax=ax)
-s.draw_field(x, y, zorder=10)
+s.draw_field(*detector.centers, zorder=10, direction_only=True)
 
 ax.legend(loc='upper right', fontsize='small')
 
