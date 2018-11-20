@@ -30,6 +30,7 @@ x = np.linspace(-1, 11, 100)
 y = np.linspace(-0.5, 1.5, 50)
 usage = dict(use_conductors=True, use_dielectrics=True)
 rt = s.draw_potential(x, y, ax=ax_geometry, **usage)
+x, y = np.meshgrid(x, y)
 s.draw_field(x, y, ax=ax_geometry, **usage)
 ax_geometry.legend(loc='best', fontsize='small')
 
@@ -66,7 +67,7 @@ for distance in distances:
         estatic2d.SegmentConductor((0, distance), (width, distance), steps, potential=1001),
         estatic2d.RectangleDielectric(bottom_left=(0,0), sides=(width, distance), segments=(10,10), epsilon_rel=epsilon)
     )
-    s.solve(use_dielectrics=True)
+    s.solve(use_dielectrics=True, verbose=False)
     q1 = s.conductors[0].charge_per_unit_length
     q2 = s.conductors[1].charge_per_unit_length
     assert np.allclose(q2, -q1, atol=1e-8 * constants.epsilon_0)

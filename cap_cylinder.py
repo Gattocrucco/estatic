@@ -3,13 +3,14 @@ from matplotlib import pyplot as plt
 from scipy import constants
 import numpy as np
 
+epsilon = 2
+usage = dict(use_conductors=True, use_dielectrics=True)
+
 fig_single = plt.figure('cap_cylinder_single')
 fig_single.clf()
 fig_single.set_tight_layout(True)
 
 ax_geometry, ax_charge = fig_single.subplots(2, 1)
-
-epsilon = 2
 
 angles = 2 * np.pi * np.random.rand(200)
 s = estatic2d.ConductorSet(
@@ -24,13 +25,12 @@ ax_geometry.grid(linestyle=':')
 ax_geometry.set_ylabel('y [m]')
 ax_geometry.set_xlabel('x [m]')
 
-s.solve()
+s.solve(use_dielectrics=usage['use_dielectrics'])
 
 x = y = np.linspace(-2.2, 2.2, 50)
-usage = dict(use_conductors=True, use_dielectrics=True)
 rt = s.draw_potential(x, y, ax=ax_geometry, **usage)
 fig_single.colorbar(rt, ax=ax_geometry)
-s.draw_field(x, y, ax=ax_geometry, **usage)
+s.draw_field(*np.meshgrid(x, y), ax=ax_geometry, **usage)
 ax_geometry.legend(loc='upper right', fontsize='small')
 
 ax_charge.plot(np.degrees(np.arctan2(*s.conductors[0].centers)), s.conductors[0].sigmas, '.', color=lines[0].get_color())
@@ -65,7 +65,7 @@ for outer_radius in outer_radii:
         estatic2d.CircleConductor((0, 0), inner_radius, np.sort(angles[100:]), potential=3),
         estatic2d.RectangleDielectric((-outer_radius,-outer_radius), (2*outer_radius,2*outer_radius), (20,20), epsilon_rel=epsilon)
     )
-    s.solve()
+    s.solve(verbose=False, use_dielectrics=usage['use_dielectrics'])
     q1 = s.conductors[0].charge_per_unit_length
     q2 = s.conductors[1].charge_per_unit_length
     assert np.allclose(q2, -q1, atol=1e-8 * constants.epsilon_0)
@@ -88,7 +88,6 @@ ax_offset.set_ylabel('capacitance per unit length [F/m]')
 outer_radius = 1
 inner_radius = 0.4
 offsets = np.linspace(0, (outer_radius - inner_radius) * 0.9, 20)
-epsilon = 2
 
 cap_theo = 2 * np.pi * constants.epsilon_0 * epsilon / np.arccosh((outer_radius**2 + inner_radius**2 - offsets**2) / (2 * outer_radius * inner_radius))
 cap_appr = 2 * np.pi * constants.epsilon_0 * epsilon / (np.log(outer_radius / inner_radius) - offsets**2 / (outer_radius**2 - inner_radius**2))
@@ -101,7 +100,7 @@ for offset in offsets:
         estatic2d.CircleConductor((0, 0), inner_radius, np.sort(angles[100:]), potential=3),
         estatic2d.RectangleDielectric((-outer_radius,-outer_radius), (2*outer_radius,2*outer_radius), (20,20), epsilon_rel=epsilon)
     )
-    s.solve()
+    s.solve(verbose=False, use_dielectrics=usage['use_dielectrics'])
     q1 = s.conductors[0].charge_per_unit_length
     q2 = s.conductors[1].charge_per_unit_length
     assert np.allclose(q2, -q1, atol=1e-8 * constants.epsilon_0)

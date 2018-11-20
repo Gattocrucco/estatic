@@ -76,17 +76,22 @@ class Conductor(object):
         where = np.array([x, y])
         where_shape = (1,) * (len(where.shape) - 1)
         
-        a = np.sum(self.slopes ** 2, axis=0).reshape(*where_shape, -1)
-        b = 2 * np.sum(self.slopes.reshape(2, *where_shape, -1) * (self.centers.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1)), axis=0)
-        c = np.sum((self.centers.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1)) ** 2, axis=0)
-        
-        l = 1/2 * np.array([-self.lengths, self.lengths]).reshape(2, *where_shape, -1)
-        a = a.reshape(1, *a.shape)
-        b = b.reshape(1, *b.shape)
-        c = c.reshape(1, *c.shape)
-        
-        integrals = numexpr.evaluate('-1/2 * (1/a * sqrt(4*a*c - b**2) * arctan((2*a*l + b) / sqrt(4*a*c - b**2)) - 2*l + (b/(2*a) + l) * log(a*l**2 + b*l + c))')
-                
+        l = self.lengths
+        l = 1/2 * np.array([-l, l])
+        l =           l.reshape(2, *where_shape,    -1)
+        m = self.slopes
+        mx, my =   m.reshape(2, 1, *where_shape,    -1)
+        c = self.centers
+        cx, cy =   c.reshape(2, 1, *where_shape,    -1)
+        x, y = where.reshape(2, 1, *where.shape[1:], 1)
+
+        integrals = numexpr.evaluate('-1/2 * (\
+        2 / (mx ** 2 + my ** 2) * abs(mx * (y - cy) - my * (x - cx)) *\
+        arctan(((mx ** 2 + my ** 2) * l + mx * (cx - x) + my * (cy - y)) / abs(mx * (y - cy) - my * (x - cx))) -\
+        2 * l +\
+        ((mx * (cx - x) + my * (cy - y)) / (mx ** 2 + my ** 2) + l) *\
+        log((mx * l - (x - cx)) ** 2 + (my * l - (y - cy)) ** 2))')
+
         potential = np.sum((integrals[1] - integrals[0]) * self.sigmas.reshape(*where_shape, -1), axis=-1) / (2 * np.pi * constants.epsilon_0)
         
         assert potential.shape == where.shape[1:]
@@ -97,31 +102,27 @@ class Conductor(object):
         where = np.array([x, y])
         where_shape = (1,) * (len(where.shape) - 1)
         
-        a = np.sum(self.slopes ** 2, axis=0).reshape(*where_shape, -1)
-        b = 2 * np.sum(self.slopes.reshape(2, *where_shape, -1) * (self.centers.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1)), axis=0)
-        c = np.sum((self.centers.reshape(2, *where_shape, -1) - where.reshape(*where.shape, 1)) ** 2, axis=0)
-        
-        assert a.shape == where_shape + b.shape[-1:]
-        assert b.shape == c.shape
-        
-        d = -self.slopes.reshape(2, *where_shape, -1)
-        e = where.reshape(*where.shape, 1) - self.centers.reshape(2, *where_shape, -1)
-        
-        assert e.shape == (2,) + b.shape
-        
-        l = 1/2 * np.array([-self.lengths, self.lengths]).reshape(2, 1, *where_shape, -1)
+        l = self.lengths
+        l = 1/2 * np.array([-l, l])
+        l =           l.reshape(2, 1, *where_shape,    -1)
+        m = self.slopes
+        mx, my =   m.reshape(2, 1, 1, *where_shape,    -1)
+        vec_m =       m.reshape(1, 2, *where_shape,    -1)
+        c = self.centers
+        cx, cy =   c.reshape(2, 1, 1, *where_shape,    -1)
+        vec_c =       c.reshape(1, 2, *where_shape,    -1)
+        x, y = where.reshape(2, 1, 1, *where.shape[1:], 1)
+        vec_x =   where.reshape(1, *where.shape,        1)
 
-        a = a.reshape(1, 1, *a.shape)
-        b = b.reshape(1, 1, *b.shape)
-        c = c.reshape(1, 1, *c.shape)
-        d = d.reshape(1, *d.shape)
-        e = e.reshape(1, *e.shape)
-        w = where.reshape(1, *where.shape, 1)
-    
-        integrals = numexpr.evaluate('d/(2*a) * log(a*l**2 + b*l + c) + where(\
-            4*a*c - b**2 > 0,\
-            (2*e - b*d/a) / sqrt(4*a*c - b**2) * arctan((2*a*l + b) / sqrt(4*a*c - b**2)),\
-            (-d*b/(2*a) + e) / (a * (w - b/(2*a)))\
+        integrals = numexpr.evaluate('-vec_m / (2 * (mx**2 + my**2)) * log((mx*l - (x-cx))**2 + (my*l - (y-cy))**2) +\
+        where(\
+            mx * (y - cy) - my * (x - cx) != 0,\
+            (vec_x - vec_c + vec_m * (mx*(cx-x) + my*(cy-y)) / (mx**2 + my**2)) /\
+            abs(mx * (y - cy) - my * (x - cx)) *\
+            arctan(((mx**2 + my**2)*l + mx*(cx-x) + my*(cy-y)) / abs(mx * (y - cy) - my * (x - cx))),\
+            1 / (mx ** 2 + my ** 2) *\
+            (vec_m * (mx * (cx - x) + my * (cy - y)) + (mx ** 2 + my ** 2) * (vec_x - vec_c)) /\
+            ((mx ** 2 + my ** 2) * l + mx * (cx - x) + my * (cy - y))\
         )')
         
         field = np.sum((integrals[1] - integrals[0]) * self.sigmas.reshape(1, *where_shape, -1), axis=-1) / (2 * np.pi * constants.epsilon_0)
@@ -224,11 +225,11 @@ class Dielectric(object):
     
     def __add__(self, obj):
         if not isinstance(obj, Dielectric):
-            raise TypeError("unsupported operand types(s) for +: '{}' and '{}'".format(type(self), type(obj)))
+            raise TypeError("unsupported operand type(s) for +: '{}' and '{}'".format(type(self), type(obj)))
         bottom_left = np.concatenate([self.bottom_left, obj.bottom_left], axis=1)
         sides = np.concatenate([self.sides, obj.sides], axis=1)
         
-        # Mow to add epsilon_rel and name?
+        # How to add epsilon_rel and name?
         # maybe support different epsilon_rel for each piece of the dielectric;
         # comes at no computational cost.
         epsilon_rel = 1 + self.polarizability
@@ -410,7 +411,7 @@ class ConductorSet(object):
 
         return ax.pcolormesh(X, Y, potential, **kwargs)
         
-    def draw_field(self, x, y, ax=None, use_conductors=True, use_dielectrics=True, direction_only=False, **kw):
+    def draw_field(self, x, y, ax=None, use_conductors=True, use_dielectrics=True, scale=None, **kw):
         if ax is None:
             ax = plt.gca()
         
@@ -421,10 +422,19 @@ class ConductorSet(object):
         assert x.shape == y.shape
         
         field = self.compute_field(x, y, use_conductors=use_conductors, use_dielectrics=use_dielectrics)
-        if direction_only:
+        if scale is None or scale == 'linear':
+            pass
+        else:
             norm = np.sqrt(np.sum(field ** 2, axis=0))
             norm[norm == 0] = 1
             field /= norm
+            if scale == 'uniform':
+                pass
+            elif scale == 'log':
+                # this logaritmic scale should not end at zero because it cancels direction information
+                field *= np.log(norm / np.min(norm))
+            else:
+                raise KeyError(scale)
 
         kwargs = dict(
             color='red',
@@ -505,22 +515,19 @@ class ConductorSet(object):
         # construct A_cc
         printer('computing conductor->conductor coefficients...')
         
-        # careful: l, a used also in A_dc
-        a = np.sum(cond_slopes ** 2, axis=0).reshape(1, -1)
-        b = 2 * np.sum(cond_slopes.reshape(2, 1, -1) * (cond_centers.reshape(2, 1, -1) - cond_centers.reshape(2, -1, 1)), axis=0)
-        c = np.sum((cond_centers.reshape(2, 1, -1) - cond_centers.reshape(2, -1, 1)) ** 2, axis=0)
-        
-        assert b.shape == c.shape == 2 * (N_cond,)
-        assert a.shape == (1, N_cond)
-        
+        # careful: l is used also in A_dc
         l = 1/2 * np.array([-cond_lengths, cond_lengths]).reshape(2, 1, -1)
-        a = a.reshape(1, *a.shape)
-        b = b.reshape(1, *b.shape)
-        c = c.reshape(1, *c.shape)
-        
-        # numexpr 2x faster
-        A_cc = numexpr.evaluate('-1/2 * (1/a * sqrt(4*a*c - b**2) * arctan((2*a*l + b) / sqrt(4*a*c - b**2)) - 2*l + (b/(2*a) + l) * log(a*l**2 + b*l + c))')
-        
+        mx, my =                           cond_slopes.reshape(2, 1, 1, -1)
+        cx, cy =                          cond_centers.reshape(2, 1, 1, -1)
+        x, y =                            cond_centers.reshape(2, 1, -1, 1)
+
+        A_cc = numexpr.evaluate('-1/2 * (\
+        2 / (mx ** 2 + my ** 2) * abs(mx * (y - cy) - my * (x - cx)) *\
+        arctan(((mx ** 2 + my ** 2) * l + mx * (cx - x) + my * (cy - y)) / abs(mx * (y - cy) - my * (x - cx))) -\
+        2 * l +\
+        ((mx * (cx - x) + my * (cy - y)) / (mx ** 2 + my ** 2) + l) *\
+        log((mx * l - (x - cx)) ** 2 + (my * l - (y - cy)) ** 2))')
+
         assert A_cc.shape == (2, N_cond, N_cond)
         
         # using np.diff(A_cc, axis=0) is 2x slower!
@@ -530,27 +537,23 @@ class ConductorSet(object):
             # construct A_dc
             printer('computing conductor->dielectric coefficients...')
         
-            b = 2 * np.sum(cond_slopes.reshape(2, 1, -1) * (cond_centers.reshape(2, 1, -1) - diel_centers.reshape(2, -1, 1)), axis=0)
-            c = np.sum((cond_centers.reshape(2, 1, -1) - diel_centers.reshape(2, -1, 1)) ** 2, axis=0)
-            d = -cond_slopes.reshape(2, 1, -1)
-            e = diel_centers.reshape(2, -1, 1) - cond_centers.reshape(2, 1, -1)
-        
-            assert b.shape == c.shape == (N_diel, N_cond)
-            assert d.shape == (2, 1, N_cond)
-            assert e.shape == (2, N_diel, N_cond)
-        
-            l = l.reshape(2, 1, 1, -1)
-            a = a.reshape(1, *a.shape)
-            b = b.reshape(1, 1, *b.shape)
-            c = c.reshape(1, 1, *c.shape)
-            d = d.reshape(1, *d.shape)
-            e = e.reshape(1, *e.shape)
-            w = diel_centers.reshape(1, 2, -1, 1)
-        
-            A_dc = numexpr.evaluate('d/(2*a) * log(a*l**2 + b*l + c) + where(\
-                4*a*c - b**2 > 0,\
-                (2*e - b*d/a) / sqrt(4*a*c - b**2) * arctan((2*a*l + b) / sqrt(4*a*c - b**2)),\
-                (-d*b/(2*a) + e) / (a * (w - b/(2*a)))\
+            l =                    l.reshape(2, 1,  1, -1)
+            mx, my =  cond_slopes.reshape(2, 1, 1,  1, -1)
+            vec_m =      cond_slopes.reshape(1, 2,  1, -1)
+            cx, cy = cond_centers.reshape(2, 1, 1,  1, -1)
+            vec_c =     cond_centers.reshape(1, 2,  1, -1)
+            x, y =   diel_centers.reshape(2, 1, 1, -1,  1)
+            vec_x =     diel_centers.reshape(1, 2, -1,  1)
+
+            A_dc = numexpr.evaluate('-vec_m / (2 * (mx**2 + my**2)) * log((mx*l - (x-cx))**2 + (my*l - (y-cy))**2) +\
+            where(\
+                mx * (y - cy) - my * (x - cx) != 0,\
+                (vec_x - vec_c + vec_m * (mx*(cx-x) + my*(cy-y)) / (mx**2 + my**2)) /\
+                abs(mx * (y - cy) - my * (x - cx)) *\
+                arctan(((mx**2 + my**2)*l + mx*(cx-x) + my*(cy-y)) / abs(mx * (y - cy) - my * (x - cx))),\
+                1 / (mx ** 2 + my ** 2) *\
+                (vec_m * (mx * (cx - x) + my * (cy - y)) + (mx ** 2 + my ** 2) * (vec_x - vec_c)) /\
+                ((mx ** 2 + my ** 2) * l + mx * (cx - x) + my * (cy - y))\
             )')
         
             assert A_dc.shape == (2, 2, N_diel, N_cond)

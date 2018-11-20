@@ -4,7 +4,7 @@ import numpy as np
 
 ###### parameters ######
 # all units MKS
-housing_detector_top_margin = 5e-3
+housing_detector_top_margin = 1e-3
 housing_detector_bottom_margin = 5.0e-3
 housing_detector_left_margin = 5.0e-3
 housing_detector_right_margin = 5.0e-3
@@ -41,20 +41,26 @@ detector_bulk = estatic2d.RectangleDielectric(
     epsilon_rel=detector_epsilon
 )
 
-detector_top = estatic2d.RectangleDielectric(
+detector_bottom = estatic2d.RectangleDielectric(
     bottom_left=detector_bottom_left,
     sides=(detector_width, electrode_spacing),
-    segments=(100, 10)
+    segments=(50, 5)
 )
 
-detector_bottom = estatic2d.RectangleDielectric(
+detector_top = estatic2d.RectangleDielectric(
     bottom_left=(detector_bottom_left[0], detector_bottom_left[1] + detector_height - electrode_spacing),
-    sides=(detector_width, electrode_spacing),
-    segments=(100, 10)
+    sides=(detector_width, 0.9 * electrode_spacing),
+    segments=(100, 9)
+)
+
+detector_toptop = estatic2d.RectangleDielectric(
+    bottom_left=(detector_bottom_left[0], detector_bottom_left[1] + detector_height - 0.1 * electrode_spacing),
+    sides=(detector_width, 0.1 * electrode_spacing),
+    segments=(300, 3)
 )
 
 # keep detector_bulk first!
-detector = detector_bulk + detector_top + detector_bottom
+detector = detector_bulk + detector_top + detector_toptop + detector_bottom
 
 housing = estatic2d.RectangleConductor(
     bottom_left=detector_bottom_left - np.array([housing_detector_left_margin, housing_detector_bottom_margin]),
@@ -62,6 +68,7 @@ housing = estatic2d.RectangleConductor(
         detector_width + housing_detector_left_margin + housing_detector_right_margin,
         detector_height + housing_detector_top_margin + housing_detector_bottom_margin
     ),
+    segments=(100, 10),
     name='housing',
     potential=housing_potential
 )
@@ -167,8 +174,10 @@ print('drawing...')
 # )
 # s.draw_potential(x, y)
 s.draw(ax=ax)
-s.draw_field(*detector.centers, zorder=10, direction_only=True)
+s.draw_field(*detector.centers, zorder=10, scale='log')
 
 ax.legend(loc='upper right', fontsize='small')
+ax.set_xlim(*(0.001293994677505457, 0.0022219773781759966))
+ax.set_ylim(*(0.029440802941368933, 0.030296660409299757))
 
 fig.show()
