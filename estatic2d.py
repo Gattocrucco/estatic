@@ -50,17 +50,20 @@ matplotlib, numpy, scipy, numexpr.
 
 Classes
 -------
-Conductor : conductor objects.
-Dielectric : dielectric objects.
+Conductor :
+    Conductor objects.
+Dielectric :
+    Dielectric objects.
 CircleConductor, SegmentConductor, RectangleConductor, RectangleDielectric :
-convenience classes for constructing simple geometries.
-ConductorSet : class for aggregating objects and solving the system.
+    Convenience classes for constructing simple geometries.
+ConductorSet :
+    Class for aggregating objects and solving the system.
 
 Examples
 --------
 Simulate a cylindric capacitor:
 >>> from estatic2d import CircleConductor, ConductorSet
->>> from numpy import linspace, meshgrid
+>>> from numpy import linspace, meshgrid, abs
 >>>
 >>> s = ConductorSet(
 >>>         CircleConductor((0, 0), 1, 100, potential=1, name='inner'),
@@ -72,6 +75,7 @@ Simulate a cylindric capacitor:
 >>> s.draw() # draw the geometry
 >>> s.draw_potential(x, y)
 >>> s.draw_field(*meshgrid(x, y))
+>>> capacitance_per_unit_length = abs(s.conductors[0].charge_per_unit_length / (s.conductors[0].potential - s.conductors[1].potential))
 """
 
 __all__ = [
