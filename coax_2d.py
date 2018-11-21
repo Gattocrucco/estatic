@@ -54,7 +54,7 @@ ax_geometry.grid(linestyle=':')
 
 s.draw(ax=ax_geometry)
 
-s.draw_field(x, y, ax=ax_geometry)
+s.draw_field(*np.meshgrid(x, y), ax=ax_geometry)
 
 ax_geometry.legend(loc='upper right', fontsize='small')
 ax_geometry.set_xlabel('x [m]')
@@ -85,7 +85,7 @@ alignment_shield = estatic2d.Conductor(shield_x, shield_y, name='shield')
 for i in np.ndindex(*capacitances.shape):
     this_wire = estatic2d.CircleConductor(center=(centers_x[i], centers_y[i]), radius=wire_diameter / 2, segments=N_wire, potential=1)
     this_s = estatic2d.ConductorSet(this_wire, alignment_shield)
-    this_s.solve()
+    this_s.solve(verbose=False)
     capacitances[i] = this_wire.charge_per_unit_length
 
 color_min = 0
