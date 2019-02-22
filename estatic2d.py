@@ -3,7 +3,7 @@ import numpy as np
 from scipy import constants, linalg
 import numexpr
 
-__version__ = '1'
+__version__ = '0.0'
 
 __doc__ = """
 Module for numerically solving the field of a set of conductors at specified
